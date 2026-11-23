@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+action=${1:-}
+node=${2:-}
+case "$node" in a) other=b;; b) other=a;; *) exit 2;; esac
+runtime() { printf '%s\n' "$1" | socat - UNIX-CONNECT:/tmp/control.sock; }
+status() { runtime 'show stat' | awk -F, -v name="$1" '$1=="api" && $2==name {print $18}'; }
+sessions() { runtime 'show stat' | awk -F, -v name="$1" '$1=="api" && $2==name {print $5}'; }
+case "$action" in
+  drain)
+    [ "$(status "$other")" = UP ] || { echo "Other replica is unavailable"; exit 1; }
+    runtime "disable server api/$node"
+    for i in $(seq 1 60); do
+      [ "$(sessions "$node")" = 0 ] && exit 0
+      sleep 1
+    done
+    echo "Requests remain on disabled replica $node"; exit 1
+    ;;
+  enable)
+    runtime "enable server api/$node"
+    for i in $(seq 1 60); do
+      [ "$(status "$node")" = UP ] && exit 0
+      sleep 1
+    done
+    echo "Replica $node failed readiness"; exit 1
+    ;;
+  *) exit 2;;
+esac

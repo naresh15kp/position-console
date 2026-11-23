@@ -1,0 +1,60 @@
+x-api: &api
+  pull_policy: never
+  platform: linux/amd64
+  restart: unless-stopped
+  stop_grace_period: 40s
+  environment:
+    DB_URL: jdbc:postgresql://db:5432/positions
+    DB_USER: positions
+    DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    USERS_FILE: /run/config/users.json
+    TOKEN_SECRET: ${TOKEN_SECRET:?Set TOKEN_SECRET}
+  volumes:
+    - ./users.json:/run/config/users.json:ro
+  depends_on:
+    db:
+      condition: service_healthy
+  mem_limit: 700m
+
+services:
+  db:
+    image: postgres:16.8-alpine
+    platform: linux/amd64
+    pull_policy: never
+    environment:
+      POSTGRES_DB: positions
+      POSTGRES_USER: positions
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    volumes:
+      - data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, positions, -d, positions]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 1g
+  api-a:
+    <<: *api
+    image: position-console-api:${API_A_VERSION:-1.0.0}
+  api-b:
+    <<: *api
+    image: position-console-api:${API_B_VERSION:-1.0.0}
+  web:
+    image: position-console-web:${WEB_VERSION:-1.0.0}
+    platform: linux/amd64
+    pull_policy: never
+    mem_limit: 128m
+  edge:
+    image: position-console-edge:1.0.0
+    platform: linux/amd64
+    pull_policy: never
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api-a
+      - api-b
+      - web
+    mem_limit: 128m
+
+volumes:
+  data:

@@ -1,0 +1,3 @@
+# Install v1.0.0
+
+On the build host run `sh build-images.sh 1.0.0`. On the target load the archived images with `docker load -i bundle/images.tar.gz`. From the bundle directory, populate `.env` with `DB_PASSWORD` and `TOKEN_SECRET`, and put the users configuration in `users.json`. Start the baseline with `docker compose --env-file .env --env-file version-1.0.0.env up -d`. The console is at http://localhost:8080.
