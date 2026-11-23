@@ -1,0 +1,8 @@
+target/
+node_modules/
+web/dist/
+.env
+users.json
+bundle/
+*.tar.gz
+__pycache__/
