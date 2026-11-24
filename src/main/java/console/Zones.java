@@ -1,17 +1,13 @@
 package console;
 
 import com.fasterxml.jackson.databind.*;
-import com.fasterxml.jackson.databind.node.*;
 import org.locationtech.jts.geom.*;
 import org.locationtech.jts.geom.prep.*;
-import org.locationtech.jts.geom.util.GeometryFixer;
-import org.slf4j.*;
 import org.springframework.stereotype.Component;
 import java.util.*;
 
 @Component
 class Zones {
-    private static final Logger LOG = LoggerFactory.getLogger(Zones.class);
     private final GeometryFactory geometry = new GeometryFactory();
     private final Map<String, List<PreparedGeometry>> restricted = new LinkedHashMap<>();
     private final Map<String, List<PreparedGeometry>> all = new LinkedHashMap<>();
@@ -20,10 +16,10 @@ class Zones {
     Zones(ObjectMapper mapper) throws Exception {
         try (var input = getClass().getResourceAsStream("/zones.geojson")) { display = mapper.readTree(input); }
         Set<String> ids = new HashSet<>();
-        List<JsonNode> omitted = new ArrayList<>();
         for (JsonNode feature : display.path("features")) {
             JsonNode props = feature.path("properties");
             String id = props.path("zoneId").asText();
+            String zoneClass = props.path("class").asText();
             JsonNode shape = feature.path("geometry");
             try {
                 List<PreparedGeometry> polygons = new ArrayList<>();
@@ -33,16 +29,17 @@ class Zones {
                     case "MultiPolygon" -> { for (JsonNode polygon : points) polygons.add(prepare(polygon)); }
                     default -> throw new IllegalArgumentException("Unsupported zone geometry");
                 }
-                if (id.isBlank() || polygons.isEmpty() || !ids.add(id)) throw new IllegalArgumentException("Invalid zone ID or geometry");
+                if (id.isBlank() || polygons.isEmpty() || !ids.add(id)
+                        || !Set.of("RESTRICTED", "ADVISORY").contains(zoneClass)) {
+                    throw new IllegalArgumentException("Invalid zone properties or geometry");
+                }
                 all.put(id, List.copyOf(polygons));
-                if (props.path("class").asText().equals("RESTRICTED")) restricted.put(id, List.copyOf(polygons));
+                if (zoneClass.equals("RESTRICTED")) restricted.put(id, List.copyOf(polygons));
             } catch (IllegalArgumentException e) {
-                omitted.add(feature);
-                LOG.warn("Skipped invalid zone {}", id);
+                throw new IllegalArgumentException("Cannot load zone " + id, e);
             }
         }
-        ArrayNode features = (ArrayNode) display.path("features");
-        for (int i = features.size() - 1; i >= 0; i--) if (omitted.contains(features.get(i))) features.remove(i);
+        if (ids.isEmpty()) throw new IllegalArgumentException("No zones configured");
     }
 
     Set<String> inside(double lon, double lat) {
@@ -70,8 +67,9 @@ class Zones {
         LinearRing[] holes = new LinearRing[rings.size() - 1];
         for (int i = 0; i < holes.length; i++) holes[i] = ring(rings.get(i + 1), shell.getCoordinate().x);
         Geometry polygon = geometry.createPolygon(shell, holes);
-        if (!polygon.isValid()) polygon = GeometryFixer.fix(polygon);
-        if (polygon.isEmpty() || polygon.getDimension() != 2) throw new IllegalArgumentException("Empty zone");
+        if (!polygon.isValid() || polygon.isEmpty() || polygon.getDimension() != 2) {
+            throw new IllegalArgumentException("Invalid zone polygon");
+        }
         return PreparedGeometryFactory.prepare(polygon);
     }
 

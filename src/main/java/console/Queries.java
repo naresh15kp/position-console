@@ -16,7 +16,7 @@ class Queries {
         join reports r on r.report_id=a.trigger_report_id
         """;
     private static final String ASSET = """
-        select r.* from positions p join reports r on r.report_id=p.report_id
+        select r.* from assets a join reports r on r.report_id=a.current_report_id
         """;
 
     Queries(JdbcTemplate db, Zones zones) {
@@ -30,7 +30,7 @@ class Queries {
         var totals = db.queryForMap("""
             select coalesce(sum(received),0) received,coalesce(sum(accepted),0) accepted,
               coalesce(sum(duplicates),0) duplicates,coalesce(sum(rejected),0) rejected,
-              (select count(*) from positions) assets,
+              (select count(*) from assets where current_report_id is not null) assets,
               (select count(*) from alerts where status='OPEN') open,
               (select count(*) from alerts where status='CLAIMED') claimed,
               (select count(*) from alerts where status='RESOLVED') resolved
@@ -50,13 +50,13 @@ class Queries {
                 || !(Math.abs(bounds[1]) <= 90) || !(Math.abs(bounds[3]) <= 90) || bounds[1] > bounds[3]) {
             throw Problem.validation();
         }
-        String longitude = bounds[0] <= bounds[2] ? "p.lon between ? and ?" : "(p.lon >= ? or p.lon <= ?)";
-        return bounded(db.query(ASSET + " where p.lat between ? and ? and " + longitude + " order by p.asset_id collate \"C\" limit ?",
+        String longitude = bounds[0] <= bounds[2] ? "a.lon between ? and ?" : "(a.lon >= ? or a.lon <= ?)";
+        return bounded(db.query(ASSET + " where a.lat between ? and ? and " + longitude + " order by a.asset_id collate \"C\" limit ?",
                 this::assetRow, bounds[1], bounds[3], bounds[0], bounds[2], limit + 1), limit);
     }
 
     Map<String, Object> asset(String id) {
-        return first(db.query(ASSET + " where p.asset_id=?", this::assetRow, id));
+        return first(db.query(ASSET + " where a.asset_id=?", this::assetRow, id));
     }
 
     Map<String, Object> track(String id, String from, String to, int limit, boolean recent) {
@@ -133,7 +133,7 @@ class Queries {
 
     Map<String, Object> audit(String id, long after, int limit) {
         alert(id);
-        var rows = db.query("select * from audit where alert_id=? and id>? order by id limit ?", (rs, row) ->
+        var rows = db.query("select * from alert_audit where alert_id=? and id>? order by id limit ?", (rs, row) ->
                 fields("at", time(rs, "at"), "actor", rs.getString("actor"), "action", rs.getString("action"),
                         "fromStatus", rs.getString("from_status"), "toStatus", rs.getString("to_status"),
                         "entryId", rs.getLong("id")), positive(id, Problem.missing()), after, limit + 1);
