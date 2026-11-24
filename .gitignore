@@ -11,5 +11,6 @@ Space42_Assessment_Candidate_Pack*
 trace.zip
 bundle/
 *.tar.gz
+SHA256SUMS
 __pycache__/
 .idea/

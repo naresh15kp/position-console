@@ -9,7 +9,7 @@ const operator = users.find(user => user.role === 'OPERATOR')
 if (!operator) throw new Error('No operator account')
 
 const browser = await chromium.launch({executablePath: browserPath, headless: true})
-const context = await browser.newContext()
+const context = await browser.newContext({bypassCSP: true})
 const page = await context.newPage()
 const externalRequests = []
 const requestFailures = []

@@ -12,6 +12,8 @@ Results are recorded only after the named command completed. Credentials were re
 
 These are development measurements, not substitutes for the required isolated Linux amd64 bundle rehearsal.
 
+Docker Desktop 29.9.3 supplied a Linux x86_64 engine with Compose 5.7.1 and WSL data stored on the E: drive. It was used as the local archive rehearsal host; an independent physical Linux host remains desirable before publication.
+
 ## Baseline results
 
 | Check | Result |
@@ -28,6 +30,10 @@ These are development measurements, not substitutes for the required isolated Li
 | 5x console profile | Full 225,748-line replay at 1,502 lines/s; 3,000 assets/12 zones; 72 ms maximum main-thread long task; zero tasks over 200 ms; no external requests |
 | Disconnect/reconnect | Browser offline for 30 seconds; visible `Reconnecting`; recovered to `Live` without reload with 3,001 assets/12 zones |
 | Accessibility/browser host check | Zero Axe WCAG 2.1 A/AA violations; keyboard reached an asset button with a visible outline; no request to a non-local host |
+| linux/amd64 images | API, web, edge and PostgreSQL 16.8 inspected as `linux/amd64`; API UID 10001, web `nginx`, edge `haproxy` |
+| Runtime hardening | API/web/edge run with read-only root filesystems, all capabilities dropped, no privileged mode, and a private Compose network |
+| Two-replica edge routing | HAProxy logs show alternating `api/a` and `api/b` for ingest, reads, lifecycle commands and negative contract checks |
+| Offline archive rehearsal | 227.2 MiB archive; removed all four runtime images, loaded only `bundle/images.tar.gz`, started a fresh project with `pull_policy: never`, then passed contract and browser checks |
 
 The required target is at least 2,000 ingest lines/s and viewport p95 below 100 ms for up to 1,000 matching assets. The local baseline passes both under the target's unspecified viewport concurrency. The extra four-client stress number is retained rather than presented as a pass.
 
@@ -41,10 +47,8 @@ The required target is at least 2,000 ingest lines/s and viewport p95 below 100 
 6. Run `python tests/viewport.py users.json API_A 250 1`. The script derives and verifies a real bbox with at most 1,000 matches and checks every response count.
 7. Run `npm ci` in `tests/browser`, set `CHROMIUM_PATH`, start the console, then run `node verify-console.mjs users.json`. On a fresh database run `node profile-5x.mjs users.json` while replaying the supplied feed at 5x.
 
-## Pending acceptance evidence
+## Pending evidence before public submission
 
-- Build/inspect all linux/amd64 images and rehearse clean v1.0.0/v1.1.0 installs from the actual archive without network access.
-- Run traffic through packaged HAProxy and prove both API replicas receive the concurrency scenarios.
 - Perform a manual screen-reader announcement check; automated Axe, keyboard focus and runtime-host checks pass.
 - Rehearse the populated, traffic-bearing v1.0.0 → v1.1.0 rolling upgrade with zero failed requests.
-- Docker Desktop prerequisites are enabled but require a Windows restart. The continuation script is outside the repository at `E:\soft\dev App\installers\finish-docker-install.ps1`.
+- Repeat the final combined v1.0.0/v1.1.0 release archive rehearsal on an independent Linux x86_64 host with external networking disabled.
