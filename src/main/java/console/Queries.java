@@ -1,5 +1,7 @@
 package console;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,18 +12,18 @@ import java.util.*;
 @Service
 class Queries {
     private final JdbcTemplate db;
-    private final Zones zones;
+    private final ObjectMapper json;
     private static final String ALERT = """
         select a.*,r.observed_at as trigger_observed_at from alerts a
         join reports r on r.report_id=a.trigger_report_id
         """;
     private static final String ASSET = """
-        select r.* from assets a join reports r on r.report_id=a.current_report_id
+        select r.*,a.zone_ids from assets a join reports r on r.report_id=a.current_report_id
         """;
 
-    Queries(JdbcTemplate db, Zones zones) {
+    Queries(JdbcTemplate db, ObjectMapper json) {
         this.db = db;
-        this.zones = zones;
+        this.json = json;
     }
 
     boolean ready() { return Integer.valueOf(1).equals(db.queryForObject("select 1", Integer.class)); }
@@ -100,8 +102,16 @@ class Queries {
         var result = trackRow(rs, row);
         result.putAll(fields("assetId", rs.getString("asset_id"), "kind", rs.getString("kind"),
                 "speedKn", rs.getObject("speed_kn"), "headingDeg", rs.getObject("heading_deg"),
-                "zoneIds", zones.membership(rs.getDouble("lon"), rs.getDouble("lat"))));
+                "zoneIds", zoneIds(rs.getString("zone_ids"))));
         return result;
+    }
+
+    private List<String> zoneIds(String value) throws SQLException {
+        try {
+            return json.readerForListOf(String.class).readValue(value);
+        } catch (JsonProcessingException e) {
+            throw new SQLException("Invalid stored zone membership", e);
+        }
     }
 
     Map<String, Object> alerts(String status, String asset, String zone, String cursor, int limit) {

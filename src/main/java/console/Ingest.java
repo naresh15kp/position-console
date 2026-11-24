@@ -22,10 +22,12 @@ class Ingest {
     private static final int MAX_BYTES = 5_000_000;
     private final JdbcTemplate db;
     private final ObjectReader reader;
+    private final ObjectMapper json;
     private final Zones zones;
 
     Ingest(JdbcTemplate db, ObjectMapper mapper, Zones zones) {
         this.db = db;
+        this.json = mapper;
         this.reader = mapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.zones = zones;
     }
@@ -231,13 +233,13 @@ class Ingest {
         }
 
         db.batchUpdate("""
-                update assets set current_report_id=?,current_observed_at=?,current_observed_ns=?,lat=?,lon=?
+                update assets set current_report_id=?,current_observed_at=?,current_observed_ns=?,lat=?,lon=?,zone_ids=?
                 where asset_id=?
                 """, changedAssets.stream().sorted().map(asset -> {
             Current value = current.get(asset);
             return new Object[]{
                     value.reportId(), dbTime(value.time()), nanoRemainder(value.time()),
-                    value.lat(), value.lon(), asset
+                    value.lat(), value.lon(), zoneIds(value.lon(), value.lat()), asset
             };
         }).toList());
         db.batchUpdate("""
@@ -256,6 +258,14 @@ class Ingest {
                 rs.getDouble("lat"), rs.getDouble("lon"), rs.getString("kind"),
                 (Double) rs.getObject("speed_kn"), (Double) rs.getObject("heading_deg"), rs.getString("source")
         );
+    }
+
+    private String zoneIds(double lon, double lat) {
+        try {
+            return json.writeValueAsString(zones.membership(lon, lat));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Cannot serialize zone membership", e);
+        }
     }
 
     private static OffsetDateTime dbTime(Instant time) {

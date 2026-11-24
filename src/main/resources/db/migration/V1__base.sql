@@ -5,6 +5,7 @@ CREATE TABLE assets (
   current_observed_ns smallint,
   lat double precision,
   lon double precision,
+  zone_ids text NOT NULL DEFAULT '[]',
   CHECK (current_observed_ns IS NULL OR current_observed_ns BETWEEN 0 AND 999),
   CHECK (
     (current_report_id IS NULL AND current_observed_at IS NULL AND current_observed_ns IS NULL
