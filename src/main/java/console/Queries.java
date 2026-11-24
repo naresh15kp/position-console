@@ -20,6 +20,7 @@ class Queries {
     private static final String ASSET = """
         select r.*,a.zone_ids from assets a join reports r on r.report_id=a.current_report_id
         """;
+    private static final String SOURCE_TYPE = "coalesce(source_type,classify_source(source))";
 
     Queries(JdbcTemplate db, ObjectMapper json) {
         this.db = db;
@@ -61,11 +62,19 @@ class Queries {
         return first(db.query(ASSET + " where a.asset_id=?", this::assetRow, id));
     }
 
-    Map<String, Object> track(String id, String from, String to, int limit, boolean recent) {
+    Map<String, Object> track(String id, String from, String to, int limit, boolean recent, String sourceType) {
         asset(id);
         var arguments = new ArrayList<Object>();
         arguments.add(id);
-        StringBuilder sql = new StringBuilder("select * from reports where asset_id=?");
+        StringBuilder sql = new StringBuilder(
+                "select reports.*," + SOURCE_TYPE + " effective_source_type from reports where asset_id=?");
+        if (sourceType != null) {
+            if (!Set.of("SATELLITE", "GROUND", "MOBILE", "UNKNOWN").contains(sourceType)) {
+                throw Problem.validation();
+            }
+            sql.append(" and ").append(SOURCE_TYPE).append("=?");
+            arguments.add(sourceType);
+        }
         if (from != null) {
             sql.append(" and (observed_at, observed_ns) >= (?,?)");
             addTime(arguments, from);
@@ -77,7 +86,7 @@ class Queries {
         arguments.add(limit + 1);
         String direction = recent ? " desc" : " asc";
         var rows = db.query(sql + " order by observed_at" + direction + ", observed_ns" + direction
-                + ", report_id" + direction + " limit ?", this::trackRow,
+                + ", report_id" + direction + " limit ?", this::classifiedTrackRow,
                 arguments.toArray());
         boolean truncated = rows.size() > limit;
         var items = new ArrayList<>(rows.subList(0, Math.min(limit, rows.size())));
@@ -96,6 +105,12 @@ class Queries {
     private Map<String, Object> trackRow(ResultSet rs, int row) throws SQLException {
         return fields("reportId", rs.getString("report_id"), "observedAt", time(rs, "observed_at"),
                 "lat", rs.getDouble("lat"), "lon", rs.getDouble("lon"), "source", rs.getString("source"));
+    }
+
+    private Map<String, Object> classifiedTrackRow(ResultSet rs, int row) throws SQLException {
+        var result = trackRow(rs, row);
+        result.put("sourceType", rs.getString("effective_source_type"));
+        return result;
     }
 
     private Map<String, Object> assetRow(ResultSet rs, int row) throws SQLException {

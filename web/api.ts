@@ -1,6 +1,7 @@
 export type User = {username: string; role: 'INGEST' | 'OPERATOR' | 'SUPERVISOR'}
 export type Session = {user: User; accessToken: string}
-export type Point = {reportId: string; observedAt: string; lat: number; lon: number; source?: string | null}
+export type SourceType = 'SATELLITE' | 'GROUND' | 'MOBILE' | 'UNKNOWN'
+export type Point = {reportId: string; observedAt: string; lat: number; lon: number; source?: string | null; sourceType?: SourceType}
 export type Position = Point & {assetId: string; kind?: string | null; headingDeg?: number | null; speedKn?: number | null; zoneIds: string[]}
 export type Alert = {alertId: string; assetId: string; zoneId: string; status: 'OPEN' | 'CLAIMED' | 'RESOLVED'; openedAt: string; claimedBy?: string | null}
 type Coordinate = [number, number]

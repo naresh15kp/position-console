@@ -181,6 +181,7 @@ function Console({session, signOut}: {session: Session; signOut: () => void}) {
             <h3>Recent track</h3>
             <ol className="track">{[...track].reverse().map(p => <li key={p.reportId}>
               <time>{p.observedAt}</time> · {p.lat.toFixed(4)}°, {p.lon.toFixed(4)}° · {p.source ?? 'Unknown source'}
+              {' · '}{p.sourceType ?? 'UNKNOWN'}
             </li>)}</ol>
           </> : <p>Select an asset to see its position and recent track.</p>}
         </div></div>

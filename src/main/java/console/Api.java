@@ -66,9 +66,10 @@ class Api {
     @GetMapping("/api/v1/assets/{assetId}/track")
     Object track(HttpServletRequest request, @PathVariable String assetId, @RequestParam(required=false) String from,
                  @RequestParam(required=false) String to, @RequestParam(defaultValue="500") int limit,
-                 @RequestParam(defaultValue="false") boolean recent) {
+                 @RequestParam(defaultValue="false") boolean recent,
+                 @RequestParam(required=false) String sourceType) {
         operator(request);
-        return queries.track(assetId, from, to, bounded(limit, 5000), recent);
+        return queries.track(assetId, from, to, bounded(limit, 5000), recent, sourceType);
     }
 
     @GetMapping("/api/v1/alerts")
