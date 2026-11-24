@@ -1,6 +1,13 @@
 .git
+.idea
 .env
 users.json
+seed-users*.json
+*Candidate*Brief*
+*candidate-pack*
+Space42_Assessment_Candidate_Pack*
+*.trace
+trace.zip
 bundle
 target
 web/node_modules

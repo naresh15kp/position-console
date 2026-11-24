@@ -3,6 +3,13 @@ node_modules/
 web/dist/
 .env
 users.json
+seed-users*.json
+*Candidate*Brief*
+*candidate-pack*
+Space42_Assessment_Candidate_Pack*
+*.trace
+trace.zip
 bundle/
 *.tar.gz
 __pycache__/
+.idea/
