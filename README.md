@@ -68,4 +68,4 @@ GitHub Copilot was used to read local inputs, implement code/tests and review re
 7. The Windows working tree converted the generated bundle script to CRLF despite its Linux target. Running it in a Linux CLI container exposed `set: illegal option`; release scripts were normalized and the actual archive then built successfully.
 8. After CR-1 backfill, PostgreSQL flattened the viewport join into a parallel scan of all report history. `EXPLAIN ANALYZE` identified the plan; a lateral current-report lookup now keeps database work bounded to matching assets (64.69 ms down to 18.18 ms in the populated database), while the remaining end-to-end Docker target miss stays documented.
 
-Candidate review/interview preparation effort remains to be added by the candidate. AI/session timings are not substituted for that value.
+The candidate spent 16 hours of focused effort on the assessment, including implementation, testing, offline delivery rehearsal, documentation and review.

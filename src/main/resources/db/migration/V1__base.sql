@@ -32,8 +32,6 @@ CREATE TABLE reports (
 ALTER TABLE assets ADD CONSTRAINT assets_current_report
   FOREIGN KEY (current_report_id)
   REFERENCES reports (report_id)
-  -- Assets and reports are inserted in one transaction, so their cyclic ownership
-  -- constraints must be checked only after both sides exist.
   DEFERRABLE INITIALLY DEFERRED;
 
 CREATE FUNCTION verify_asset_current_report() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -111,7 +109,6 @@ CREATE TABLE alerts (
 );
 CREATE UNIQUE INDEX alerts_one_active
   ON alerts (asset_id, zone_id)
-  -- Resolved history remains repeatable while OPEN/CLAIMED rows stay unique.
   WHERE status IN ('OPEN', 'CLAIMED');
 CREATE INDEX alerts_status_page ON alerts (status, id);
 CREATE INDEX alerts_asset_page ON alerts (asset_id, id);
@@ -143,7 +140,6 @@ BEGIN
       RAISE EXCEPTION 'Invalid alert transition';
     END IF;
     change_actor := current_setting('console.actor', true);
-    -- The service sets a transaction-local actor before every user-driven transition.
     IF change_actor IS NULL OR change_actor = '' THEN
       RAISE EXCEPTION 'Missing alert actor';
     END IF;
