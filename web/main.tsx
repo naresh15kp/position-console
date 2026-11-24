@@ -78,6 +78,7 @@ function Console({session, signOut}: {session: Session; signOut: () => void}) {
         setConnected(false)
         if (e instanceof ApiError && e.status === 401) signOut()
       } finally {
+        // Schedule after completion so slow responses cannot create overlapping polls.
         if (!controller.signal.aborted) timer = setTimeout(poll, 1000)
       }
     }
@@ -99,6 +100,7 @@ function Console({session, signOut}: {session: Session; signOut: () => void}) {
         if (status === 'OPEN' && !cursor) {
           const current = new Set(nextPage.items.map(a => a.alertId))
           const count = [...current].filter(id => !priorOpen.current.has(id)).length
+          // Avoid announcing the initial snapshot or flooding screen readers during bursts.
           if (initialized.current && count && Date.now() - lastAnnouncement.current > 8000) {
             setAnnouncement(count === 1 ? 'One new open alert.' : count + ' new open alerts.')
             lastAnnouncement.current = Date.now()
@@ -123,6 +125,7 @@ function Console({session, signOut}: {session: Session; signOut: () => void}) {
       .then(({items}) => {if (!cancelled) setTrack(items)})
       .catch(() => {if (!cancelled) setTrack([])})
     return () => {cancelled = true}
+    // Refresh when polling observes a new current report, including after reconnect.
   }, [selected, session, active?.reportId, connected])
 
   function select(id: string) {setTrack([]); setSelected(id)}

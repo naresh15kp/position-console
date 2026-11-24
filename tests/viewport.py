@@ -29,6 +29,8 @@ world = fetch("/api/v1/assets?bbox=-180,-90,180,90&limit=5000", token)
 assert not world["truncated"] and len(world["items"]) >= 1000, len(world["items"])
 
 longitudes = sorted(item["lon"] for item in world["items"])
+# Pick a strict gap near 1,000 rows so the bbox has a deterministic count without
+# depending on how equal longitudes are ordered.
 match_count = next(
     index for index in range(1000, 899, -1)
     if longitudes[index - 1] < longitudes[index]

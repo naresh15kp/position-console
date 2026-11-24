@@ -31,6 +31,8 @@ BEGIN
 
     EXIT WHEN page_end IS NULL;
 
+    -- Advance by the page boundary, not rows changed, so reruns also skip rows that
+    -- concurrent writers or an earlier interrupted attempt already classified.
     UPDATE reports
     SET source_type = classify_source(source)
     WHERE (last_id IS NULL OR report_id > last_id)
@@ -44,6 +46,7 @@ BEGIN
         updated_at = clock_timestamp()
     WHERE singleton;
 
+    -- Commit each page to bound row-version growth and lock duration during rollout.
     COMMIT;
     PERFORM pg_sleep(pause_seconds);
   END LOOP;

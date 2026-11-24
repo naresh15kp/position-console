@@ -8,9 +8,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/** Verifies database constraints and triggers that protect cross-service invariants. */
 class DatabaseInvariantsTest {
     private Connection db;
 
+    /** Opens a rollback-only integration connection when test credentials are available. */
     @BeforeEach
     void connect() throws SQLException {
         String url = System.getenv("IT_DB_URL");
@@ -23,6 +25,7 @@ class DatabaseInvariantsTest {
         db.setAutoCommit(false);
     }
 
+    /** Rolls back each integration fixture and closes its connection. */
     @AfterEach
     void close() throws SQLException {
         if (db != null) {
@@ -31,6 +34,7 @@ class DatabaseInvariantsTest {
         }
     }
 
+    /** Verifies active-alert uniqueness and transactional audit rollback. */
     @Test
     void enforcesActiveAlertUniquenessAndRollsBackAuditWithState() throws SQLException {
         Fixture fixture = fixture();
@@ -74,6 +78,7 @@ class DatabaseInvariantsTest {
         assertThat(count("select count(*) from alert_audit where alert_id=" + alertId)).isZero();
     }
 
+    /** Verifies that an asset cannot reference another asset's report. */
     @Test
     void rejectsCurrentReportFromAnotherAsset() throws SQLException {
         Fixture first = fixture();
@@ -91,6 +96,7 @@ class DatabaseInvariantsTest {
         }).isInstanceOf(SQLException.class);
     }
 
+    /** Verifies that persisted audit rows cannot be changed. */
     @Test
     void rejectsAuditMutation() throws SQLException {
         Fixture fixture = fixture();
@@ -115,6 +121,7 @@ class DatabaseInvariantsTest {
         }).isInstanceOf(SQLException.class);
     }
 
+    /** Inserts a unique asset and report fixture in the current transaction. */
     private Fixture fixture() throws SQLException {
         String suffix = UUID.randomUUID().toString().replace("-", "");
         String asset = "DB-" + suffix.substring(0, 12).toUpperCase();
@@ -132,6 +139,7 @@ class DatabaseInvariantsTest {
         return new Fixture(asset, report);
     }
 
+    /** Executes a scalar count query for an assertion. */
     private long count(String sql) throws SQLException {
         try (Statement statement = db.createStatement(); ResultSet result = statement.executeQuery(sql)) {
             result.next();
@@ -139,5 +147,6 @@ class DatabaseInvariantsTest {
         }
     }
 
+    /** Identifies the asset and report created for an invariant test. */
     private record Fixture(String asset, String report) {}
 }

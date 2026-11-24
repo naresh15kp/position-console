@@ -6,6 +6,7 @@ import org.locationtech.jts.geom.prep.*;
 import org.springframework.stereotype.Component;
 import java.util.*;
 
+/** Loads zone geometry and evaluates restricted or full zone membership. */
 @Component
 class Zones {
     private final GeometryFactory geometry = new GeometryFactory();
@@ -13,6 +14,7 @@ class Zones {
     private final Map<String, List<PreparedGeometry>> all = new LinkedHashMap<>();
     final JsonNode display;
 
+    /** Loads, validates, unwraps, and prepares configured GeoJSON zones. */
     Zones(ObjectMapper mapper) throws Exception {
         try (var input = getClass().getResourceAsStream("/zones.geojson")) { display = mapper.readTree(input); }
         Set<String> ids = new HashSet<>();
@@ -42,25 +44,30 @@ class Zones {
         if (ids.isEmpty()) throw new IllegalArgumentException("No zones configured");
     }
 
+    /** Returns restricted zones containing the supplied position. */
     Set<String> inside(double lon, double lat) {
         return inside(lon, lat, restricted);
     }
 
+    /** Returns all restricted and advisory zones containing the supplied position. */
     Set<String> membership(double lon, double lat) {
         return inside(lon, lat, all);
     }
 
+    /** Evaluates a point against a selected prepared-zone collection. */
     private Set<String> inside(double lon, double lat, Map<String, List<PreparedGeometry>> zones) {
         Set<String> result = new LinkedHashSet<>();
         Point point = geometry.createPoint(new Coordinate(lon, lat));
         Point east = geometry.createPoint(new Coordinate(lon + 360, lat));
         Point west = geometry.createPoint(new Coordinate(lon - 360, lat));
+        // Prepared polygons may be unwrapped on either side of the antimeridian.
         zones.forEach((id, parts) -> {
             if (parts.stream().anyMatch(part -> part.contains(point) || part.contains(east) || part.contains(west))) result.add(id);
         });
         return result;
     }
 
+    /** Converts GeoJSON polygon rings into validated prepared geometry. */
     private PreparedGeometry prepare(JsonNode rings) {
         if (rings.isEmpty()) throw new IllegalArgumentException("Missing outer ring");
         LinearRing shell = ring(rings.get(0), null);
@@ -73,6 +80,7 @@ class Zones {
         return PreparedGeometryFactory.prepare(polygon);
     }
 
+    /** Builds a normalized closed linear ring in a continuous longitude frame. */
     private LinearRing ring(JsonNode points, Double anchor) {
         List<Coordinate> ring = new ArrayList<>();
         double previous = anchor == null ? points.path(0).path(0).asDouble() : anchor;
@@ -80,6 +88,7 @@ class Zones {
             double x = p.path(0).asDouble(Double.NaN);
             double y = p.path(1).asDouble(Double.NaN);
             if (!(Math.abs(x) <= 180 && Math.abs(y) <= 90)) throw new IllegalArgumentException("Invalid zone coordinates");
+            // Keep adjacent vertices in one continuous longitude frame.
             while (x - previous > 180) x -= 360;
             while (x - previous < -180) x += 360;
             var coordinate = new Coordinate(x, y);

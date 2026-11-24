@@ -12,6 +12,7 @@ for image in \
   position-console-edge:1.0.0 \
   postgres:16.8-alpine
 do
+  # Reject host-native images before producing an archive for Linux amd64 sites.
   test "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
 done
 cp compose.yaml deployment.env.example users.example.json version-*.env \

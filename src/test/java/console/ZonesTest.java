@@ -5,13 +5,16 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/** Verifies zone loading and geometric membership edge cases. */
 class ZonesTest {
     private final Zones zones;
 
+    /** Loads the production zone fixture for each test instance. */
     ZonesTest() throws Exception {
         zones = new Zones(new ObjectMapper());
     }
 
+    /** Verifies holes, multipolygons, overlap, winding, and antimeridian geometry. */
     @Test
     void handlesSuppliedGeometryEdgeCases() {
         assertThat(zones.inside(172.7, 39.2)).contains("Z-03");
@@ -24,6 +27,7 @@ class ZonesTest {
         assertThat(zones.inside(170.8, 35.3)).contains("Z-02");
     }
 
+    /** Verifies alert boundaries and advisory-zone membership semantics. */
     @Test
     void excludesBoundariesAndAdvisoryZonesFromAlerts() {
         assertThat(zones.inside(168.0, 38.0)).doesNotContain("Z-01");

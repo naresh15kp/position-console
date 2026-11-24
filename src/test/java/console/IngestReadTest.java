@@ -11,13 +11,16 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/** Verifies streaming request parsing and line-level ingest validation. */
 class IngestReadTest {
     private final Ingest ingest;
 
+    /** Creates an ingest reader without a database dependency. */
     IngestReadTest() throws Exception {
         ingest = new Ingest(null, new ObjectMapper(), new Zones(new ObjectMapper()));
     }
 
+    /** Verifies invalid non-empty lines are isolated with stable line numbers. */
     @Test
     void isolatesInvalidNonEmptyLines() throws Exception {
         String valid = """
@@ -33,6 +36,7 @@ class IngestReadTest {
                 .containsExactly("MALFORMED_JSON", "MISSING_FIELD");
     }
 
+    /** Verifies optional fields reject values of the wrong type. */
     @Test
     void rejectsInvalidOptionalFieldTypes() throws Exception {
         MockHttpServletRequest request = request("""
@@ -45,6 +49,7 @@ class IngestReadTest {
         assertThat(batch.invalid().getFirst().rejection().code()).isEqualTo("INVALID_FIELD");
     }
 
+    /** Verifies line and byte budgets are enforced while streaming. */
     @Test
     void enforcesNonEmptyLineAndByteLimitsWhileStreaming() {
         String tooMany = IntStream.range(0, 1001).mapToObj(index -> "{}").collect(Collectors.joining("\n"));
@@ -59,6 +64,7 @@ class IngestReadTest {
                 .isInstanceOfSatisfying(Problem.class, problem -> assertThat(problem.status).isEqualTo(413));
     }
 
+    /** Creates an NDJSON mock request from a text body. */
     private static MockHttpServletRequest request(String body) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setContentType("application/x-ndjson; charset=utf-8");

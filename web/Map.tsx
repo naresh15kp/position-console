@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react'
 import type {Point, Position, Zone} from './api'
 
 const center = {lon: 174, lat: 39, scale: 35}
+// Use the shortest signed longitude delta so panning remains continuous at ±180°.
 const wrap = (delta: number) => ((delta + 180) % 360 + 360) % 360 - 180
 
 export function MapView({assets, zones, selected, track, select}: {
@@ -28,6 +29,7 @@ export function MapView({assets, zones, selected, track, select}: {
     const element = canvas.current
     const context = element?.getContext('2d')
     if (!element || !context) return
+    // Cap the backing-store multiplier to keep large high-DPI canvases bounded.
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     element.width = size.width * dpr
     element.height = size.height * dpr
@@ -65,6 +67,7 @@ export function MapView({assets, zones, selected, track, select}: {
           })
           context.closePath()
         }
+        // Even-odd filling preserves holes regardless of ring winding.
         context.fill('evenodd'); context.stroke()
       }
       const first = parts[0]?.[0]?.[0]

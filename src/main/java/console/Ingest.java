@@ -16,6 +16,7 @@ import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+/** Validates NDJSON reports and atomically updates report, asset, and alert state. */
 @Service
 class Ingest {
     private static final Logger LOG = LoggerFactory.getLogger(Ingest.class);
@@ -25,6 +26,7 @@ class Ingest {
     private final ObjectMapper json;
     private final Zones zones;
 
+    /** Creates the ingest service and its strict JSON reader. */
     Ingest(JdbcTemplate db, ObjectMapper mapper, Zones zones) {
         this.db = db;
         this.json = mapper;
@@ -32,15 +34,23 @@ class Ingest {
         this.zones = zones;
     }
 
+    /** Represents one validated position report. */
     record Report(String id, String asset, Instant time, double lat, double lon, String kind,
                   Double speed, Double heading, String source) {}
+    /** Describes one rejected non-empty input line. */
     record Rejection(int line, String code) {}
+    /** Retains a rejected line with its persisted raw representation. */
     record Invalid(Rejection rejection, String raw) {}
+    /** Contains the valid and invalid lines read from one request. */
     record Batch(List<Report> reports, List<Invalid> invalid) {}
+    /** Summarizes the persisted outcome of one ingest batch. */
     record Result(int received, int accepted, int duplicates, int rejected, List<Rejection> rejections) {}
+    /** Captures the current position used while advancing an asset. */
     record Current(String reportId, Instant time, double lat, double lon) {}
+    /** Identifies an entry alert to insert after current-state advancement. */
     record AlertCandidate(String assetId, String zoneId, String reportId) {}
 
+    /** Streams, bounds, and validates an NDJSON request outside the transaction. */
     Batch read(HttpServletRequest request) throws IOException {
         String type = request.getContentType();
         if (type == null || !type.split(";", 2)[0].strip().equalsIgnoreCase("application/x-ndjson")) {
@@ -69,6 +79,7 @@ class Ingest {
         return new Batch(List.copyOf(reports), List.copyOf(invalid));
     }
 
+    /** Parses and validates one report line. */
     private Report parse(String raw) {
         JsonNode n;
         try {
@@ -107,6 +118,7 @@ class Ingest {
                 optionalText(n.path("source")));
     }
 
+    /** Reads a finite coordinate within the supplied absolute bound. */
     private static double coordinate(JsonNode value, int max) {
         if (!value.isNumber() || !Double.isFinite(value.doubleValue()) || Math.abs(value.doubleValue()) > max) {
             throw new BadReport("INVALID_COORDINATE");
@@ -114,29 +126,35 @@ class Ingest {
         return value.doubleValue();
     }
 
+    /** Reads a required NUL-free text field. */
     private static String requiredText(JsonNode value) {
         if (!value.isTextual() || value.textValue().indexOf(0) >= 0) throw new BadReport("INVALID_FIELD");
         return value.textValue();
     }
 
+    /** Reads an optional NUL-free text field. */
     private static String optionalText(JsonNode value) {
         if (value.isMissingNode() || value.isNull()) return null;
         if (!value.isTextual() || value.textValue().indexOf(0) >= 0) throw new BadReport("INVALID_FIELD");
         return value.textValue();
     }
 
+    /** Reads an optional finite numeric field. */
     private static Double optionalNumber(JsonNode value) {
         if (value.isMissingNode() || value.isNull()) return null;
         if (!value.isNumber() || !Double.isFinite(value.doubleValue())) throw new BadReport("INVALID_FIELD");
         return value.doubleValue();
     }
 
+    /** Signals a line-level validation failure without allocating a stack trace. */
     private static class BadReport extends RuntimeException {
+        /** Creates a report failure with its stable rejection code. */
         BadReport(String code) {
             super(code, null, false, false);
         }
     }
 
+    /** Persists one parsed batch and advances affected current state atomically. */
     @Transactional
     public Result store(Batch batch, String requestId) {
         List<Report> inserted = insertReports(batch.reports());
@@ -160,9 +178,12 @@ class Ingest {
                 batch.invalid().stream().map(Invalid::rejection).toList());
     }
 
+    /** Inserts the first occurrence of each previously unseen report ID. */
     private List<Report> insertReports(List<Report> reports) {
         if (reports.isEmpty()) return List.of();
 
+        // The first payload for an ID wins within a batch; sorting also gives concurrent
+        // transactions a consistent order before they lock the affected asset rows.
         Map<String, Report> firstById = new LinkedHashMap<>();
         reports.forEach(report -> firstById.putIfAbsent(report.id(), report));
         List<Report> candidates = firstById.values().stream()
@@ -192,12 +213,15 @@ class Ingest {
                 """.formatted(values), this::reportRow, arguments.toArray());
     }
 
+    /** Locks affected assets, advances their current positions, and creates entry alerts. */
     private void updateAssetsAndAlerts(List<Report> delivered, List<Report> inserted) {
         List<String> assetIds = inserted.stream().map(Report::asset).distinct().sorted().toList();
         String assetValues = String.join(",", Collections.nCopies(assetIds.size(), "(?)"));
         db.update("insert into assets(asset_id) values " + assetValues + " on conflict (asset_id) do nothing",
                 assetIds.toArray());
 
+        // Asset rows are the cross-replica mutex. Sorted locking avoids deadlocks while
+        // allowing transactions that touch unrelated assets to proceed concurrently.
         String in = String.join(",", Collections.nCopies(assetIds.size(), "?"));
         Map<String, Current> current = new HashMap<>();
         db.query("""
@@ -218,6 +242,8 @@ class Ingest {
         Set<String> handled = new HashSet<>();
         Set<String> changedAssets = new HashSet<>();
         List<AlertCandidate> alerts = new ArrayList<>();
+        // Preserve delivery order so equal-time reports leave the first committed current
+        // position in place; late reports remain in history without creating entry alerts.
         for (Report deliveredReport : delivered) {
             if (!handled.add(deliveredReport.id())) continue;
             Report report = insertedById.get(deliveredReport.id());
@@ -250,6 +276,7 @@ class Ingest {
         }).toList());
     }
 
+    /** Maps a returned database report row to the domain representation. */
     private Report reportRow(ResultSet rs, int row) throws SQLException {
         Instant time = rs.getObject("observed_at", OffsetDateTime.class).toInstant()
                 .plusNanos(rs.getInt("observed_ns"));
@@ -260,6 +287,7 @@ class Ingest {
         );
     }
 
+    /** Serializes all zone memberships for a current position. */
     private String zoneIds(double lon, double lat) {
         try {
             return json.writeValueAsString(zones.membership(lon, lat));
@@ -268,25 +296,32 @@ class Ingest {
         }
     }
 
+    /** Converts an instant to the database's microsecond timestamp component. */
     private static OffsetDateTime dbTime(Instant time) {
+        // PostgreSQL stores microseconds; observed_ns carries the remaining three digits.
         return OffsetDateTime.ofInstant(time.truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
     }
 
+    /** Returns the sub-microsecond nanosecond remainder stored separately. */
     private static int nanoRemainder(Instant time) {
         return time.getNano() % 1000;
     }
 
+    /** Signals that a streaming request exceeded its byte budget. */
     private static class PayloadTooLarge extends IOException {}
 
+    /** Enforces a byte limit even when the request omits a reliable content length. */
     private static class LimitedInputStream extends FilterInputStream {
         private final long maximum;
         private long count;
 
+        /** Wraps an input stream with the supplied maximum byte count. */
         LimitedInputStream(InputStream input, long maximum) {
             super(input);
             this.maximum = maximum;
         }
 
+        /** Reads one byte while enforcing the configured limit. */
         @Override
         public int read() throws IOException {
             int value = super.read();
@@ -294,6 +329,7 @@ class Ingest {
             return value;
         }
 
+        /** Reads a block without consuming beyond the configured limit. */
         @Override
         public int read(byte[] buffer, int offset, int length) throws IOException {
             long remaining = maximum - count;

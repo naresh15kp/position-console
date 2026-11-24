@@ -25,8 +25,10 @@ ALTER TABLE reports ADD CONSTRAINT reports_source_type_valid
   CHECK (
     source_type IS NOT NULL
     AND source_type IN ('SATELLITE', 'GROUND', 'MOBILE', 'UNKNOWN')
+  -- New writes are checked immediately, while existing rows are backfilled online.
   ) NOT VALID;
 
+-- The singleton row is a durable, restartable cursor for the external backfill step.
 CREATE TABLE source_type_backfill (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
   last_report_id text,
@@ -37,6 +39,7 @@ INSERT INTO source_type_backfill DEFAULT VALUES;
 
 DO $$
 BEGIN
+  -- Empty installations can finalize immediately without running the backfill scripts.
   IF NOT EXISTS (SELECT 1 FROM reports LIMIT 1) THEN
     ALTER TABLE reports VALIDATE CONSTRAINT reports_source_type_valid;
     ALTER TABLE reports ALTER COLUMN source_type SET NOT NULL;

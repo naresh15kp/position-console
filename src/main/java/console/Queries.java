@@ -10,6 +10,7 @@ import java.sql.*;
 import java.time.*;
 import java.util.*;
 
+/** Executes bounded read queries and transactional alert lifecycle commands. */
 @Service
 class Queries {
     private final JdbcTemplate db;
@@ -31,13 +32,16 @@ class Queries {
         """;
     private static final String SOURCE_TYPE = "coalesce(source_type,classify_source(source))";
 
+    /** Creates the query service and its stored-zone decoder. */
     Queries(JdbcTemplate db, ObjectMapper json) {
         this.db = db;
         this.zoneIdsReader = json.readerForListOf(String.class);
     }
 
+    /** Checks database connectivity with a minimal query. */
     boolean ready() { return Integer.valueOf(1).equals(db.queryForObject("select 1", Integer.class)); }
 
+    /** Returns aggregate ingest, current-asset, and alert-status counts. */
     Map<String, Object> stats() {
         var totals = db.queryForMap("""
             select coalesce(sum(received),0) received,coalesce(sum(accepted),0) accepted,
@@ -54,6 +58,7 @@ class Queries {
         return totals;
     }
 
+    /** Returns a bounded current-asset snapshot inside a viewport. */
     Map<String, Object> assets(String bbox, int limit) {
         double[] bounds;
         try { bounds = Arrays.stream(bbox.split(",", -1)).mapToDouble(Double::parseDouble).toArray(); }
@@ -62,15 +67,18 @@ class Queries {
                 || !(Math.abs(bounds[1]) <= 90) || !(Math.abs(bounds[3]) <= 90) || bounds[1] > bounds[3]) {
             throw Problem.validation();
         }
+        // A west bound greater than the east bound denotes a viewport crossing the antimeridian.
         String longitude = bounds[0] <= bounds[2] ? "a.lon between ? and ?" : "(a.lon >= ? or a.lon <= ?)";
         return bounded(db.query(ASSET + " where a.lat between ? and ? and " + longitude + " order by a.asset_id collate \"C\" limit ?",
                 this::assetRow, bounds[1], bounds[3], bounds[0], bounds[2], limit + 1), limit);
     }
 
+    /** Returns the current position of one asset. */
     Map<String, Object> asset(String id) {
         return first(db.query(ASSET + " where a.asset_id=?", this::assetRow, id));
     }
 
+    /** Returns a bounded and optionally filtered track for one asset. */
     Map<String, Object> track(String id, String from, String to, int limit, boolean recent, String sourceType) {
         asset(id);
         var arguments = new ArrayList<Object>();
@@ -97,12 +105,15 @@ class Queries {
         var rows = db.query(sql + " order by observed_at" + direction + ", observed_ns" + direction
                 + ", report_id" + direction + " limit ?", this::classifiedTrackRow,
                 arguments.toArray());
+        // Fetch one sentinel row to report truncation without a separate count query.
         boolean truncated = rows.size() > limit;
         var items = new ArrayList<>(rows.subList(0, Math.min(limit, rows.size())));
+        // Recent queries read newest-first for the index, then restore chronological API order.
         if (recent) Collections.reverse(items);
         return Map.of("items", items, "truncated", truncated);
     }
 
+    /** Appends a parsed timestamp's database components to query arguments. */
     private static void addTime(List<Object> args, String value) {
         try {
             Instant time = Instant.parse(value);
@@ -111,17 +122,20 @@ class Queries {
         } catch (DateTimeException e) { throw Problem.validation(); }
     }
 
+    /** Maps a historical report row to API track fields. */
     private Map<String, Object> trackRow(ResultSet rs, int row) throws SQLException {
         return fields("reportId", rs.getString("report_id"), "observedAt", time(rs, "observed_at"),
                 "lat", rs.getDouble("lat"), "lon", rs.getDouble("lon"), "source", rs.getString("source"));
     }
 
+    /** Adds the effective source classification to a track row. */
     private Map<String, Object> classifiedTrackRow(ResultSet rs, int row) throws SQLException {
         var result = trackRow(rs, row);
         result.put("sourceType", rs.getString("effective_source_type"));
         return result;
     }
 
+    /** Maps a joined current-report row to API asset fields. */
     private Map<String, Object> assetRow(ResultSet rs, int row) throws SQLException {
         return fields("reportId", rs.getString("report_id"), "observedAt", time(rs, "observed_at"),
                 "lat", rs.getDouble("lat"), "lon", rs.getDouble("lon"), "source", rs.getString("source"),
@@ -130,6 +144,7 @@ class Queries {
                 "zoneIds", zoneIds(rs.getString("zone_ids")));
     }
 
+    /** Decodes persisted zone membership JSON. */
     private List<String> zoneIds(String value) throws SQLException {
         try {
             return zoneIdsReader.readValue(value);
@@ -138,6 +153,7 @@ class Queries {
         }
     }
 
+    /** Returns a filtered cursor-based alert page. */
     Map<String, Object> alerts(String status, String asset, String zone, String cursor, int limit) {
         var args = new ArrayList<Object>();
         StringBuilder sql = new StringBuilder(ALERT);
@@ -154,6 +170,7 @@ class Queries {
         return fields("items", items, "nextCursor", more ? items.getLast().get("alertId") : null);
     }
 
+    /** Appends an optional equality filter and argument. */
     private static void filter(StringBuilder sql, List<Object> args, String column, String value) {
         if (value != null) {
             sql.append(" and a.").append(column).append("=?");
@@ -161,10 +178,12 @@ class Queries {
         }
     }
 
+    /** Returns one alert by identifier. */
     Map<String, Object> alert(String id) {
         return first(db.query(ALERT + " where a.id=?", this::alertRow, positive(id, Problem.missing())));
     }
 
+    /** Returns a cursor-based page of one alert's immutable audit entries. */
     Map<String, Object> audit(String id, long after, int limit) {
         alert(id);
         var rows = db.query("select * from alert_audit where alert_id=? and id>? order by id limit ?", (rs, row) ->
@@ -176,6 +195,7 @@ class Queries {
         return fields("items", items, "nextCursor", more ? items.getLast().get("entryId") : null);
     }
 
+    /** Applies a validated claim, release, or resolve transition under a row lock. */
     @Transactional
     public Map<String, Object> command(String id, String action, Auth.User caller, String note) {
         long key = positive(id, Problem.missing());
@@ -215,8 +235,10 @@ class Queries {
         return alert(id);
     }
 
+    /** Sets the transaction-local actor consumed by the audit trigger. */
     private void actor(String user) { db.queryForObject("select set_config('console.actor',?,true)", String.class, user); }
 
+    /** Maps an alert query row to API fields. */
     private Map<String, Object> alertRow(ResultSet rs, int row) throws SQLException {
         return fields("alertId", rs.getString("id"), "assetId", rs.getString("asset_id"),
                 "zoneId", rs.getString("zone_id"), "status", rs.getString("status"),
@@ -226,11 +248,13 @@ class Queries {
                 "resolvedAt", time(rs, "resolved_at"), "resolutionNote", rs.getString("resolution_note"));
     }
 
+    /** Formats a nullable database timestamp for API output. */
     private static String time(ResultSet rs, String field) throws SQLException {
         OffsetDateTime t = rs.getObject(field, OffsetDateTime.class);
         return t == null ? null : App.time(t.toInstant());
     }
 
+    /** Parses a strictly positive identifier or throws the supplied API problem. */
     private static long positive(String raw, Problem error) {
         try {
             long value = Long.parseLong(raw);
@@ -239,16 +263,19 @@ class Queries {
         throw error;
     }
 
+    /** Returns the first row or raises the missing-resource problem. */
     private static Map<String, Object> first(List<Map<String, Object>> rows) {
         if (rows.isEmpty()) throw Problem.missing();
         return rows.getFirst();
     }
 
+    /** Converts a sentinel-row result into a bounded response. */
     private static Map<String, Object> bounded(List<Map<String, Object>> rows, int limit) {
         boolean truncated = rows.size() > limit;
         return Map.of("items", truncated ? rows.subList(0, limit) : rows, "truncated", truncated);
     }
 
+    /** Builds an insertion-ordered response map from alternating key/value pairs. */
     private static Map<String, Object> fields(Object... pairs) {
         Map<String, Object> map = new LinkedHashMap<>();
         for (int i = 0; i < pairs.length; i += 2) map.put((String) pairs[i], pairs[i + 1]);
