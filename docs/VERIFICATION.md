@@ -25,6 +25,9 @@ These are development measurements, not substitutes for the required isolated Li
 | Entity totals across second replay | accepted 215,965 → 215,965; assets 3,000 → 3,000; alerts 253 → 253 |
 | Required viewport measurement | 250 requests, one client, exactly 1,000 assets/response, p95 56.42 ms, max 64.23 ms |
 | Additional viewport stress | 250 requests, four clients, exactly 1,000 assets/response, p95 216.79 ms, max 404.34 ms |
+| 5x console profile | Full 225,748-line replay at 1,502 lines/s; 3,000 assets/12 zones; 72 ms maximum main-thread long task; zero tasks over 200 ms; no external requests |
+| Disconnect/reconnect | Browser offline for 30 seconds; visible `Reconnecting`; recovered to `Live` without reload with 3,001 assets/12 zones |
+| Accessibility/browser host check | Zero Axe WCAG 2.1 A/AA violations; keyboard reached an asset button with a visible outline; no request to a non-local host |
 
 The required target is at least 2,000 ingest lines/s and viewport p95 below 100 ms for up to 1,000 matching assets. The local baseline passes both under the target's unspecified viewport concurrency. The extra four-client stress number is retained rather than presented as a pass.
 
@@ -36,12 +39,12 @@ The required target is at least 2,000 ingest lines/s and viewport p95 below 100 
 4. Set `IT_DB_URL`, `IT_DB_USER` and `IT_DB_PASSWORD`; run `mvn test`.
 5. Run the supplied `replay.py --speed max --connections 4` against the full feed, capture totals/rate, record stats, replay again and compare accepted/assets/alerts.
 6. Run `python tests/viewport.py users.json API_A 250 1`. The script derives and verifies a real bbox with at most 1,000 matches and checks every response count.
+7. Run `npm ci` in `tests/browser`, set `CHROMIUM_PATH`, start the console, then run `node verify-console.mjs users.json`. On a fresh database run `node profile-5x.mjs users.json` while replaying the supplied feed at 5x.
 
 ## Pending acceptance evidence
 
 - Build/inspect all linux/amd64 images and rehearse clean v1.0.0/v1.1.0 installs from the actual archive without network access.
 - Run traffic through packaged HAProxy and prove both API replicas receive the concurrency scenarios.
-- Capture a browser trace during 5x replay; target no main-thread task over 200 ms.
-- Capture the visible disconnect and automatic convergence after a 30-second outage.
-- Complete keyboard/screen-reader/WCAG 2.1 AA evidence and verify the browser contacts no external host.
+- Perform a manual screen-reader announcement check; automated Axe, keyboard focus and runtime-host checks pass.
 - Rehearse the populated, traffic-bearing v1.0.0 → v1.1.0 rolling upgrade with zero failed requests.
+- Docker Desktop prerequisites are enabled but require a Windows restart. The continuation script is outside the repository at `E:\soft\dev App\installers\finish-docker-install.ps1`.

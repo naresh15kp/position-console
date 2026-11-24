@@ -62,5 +62,6 @@ GitHub Copilot was used to read local inputs, implement code/tests and review re
 1. A redundant composite report unique key caused `ON CONFLICT (report_id)` to leak two 500s during replay. PostgreSQL logs identified the second conflict arbiter; it was replaced by a deferred ownership trigger, then replayed with zero HTTP errors.
 2. A non-clean Maven build retained the later V2 migration in the v1.0.0 JAR. Flyway startup logs exposed schema version 2; verification now uses `mvn clean package` and checks baseline JAR migration entries.
 3. The first denormalized-membership query selected only `reports.*`, causing viewport 500s. The end-to-end viewport script caught it; the join now projects `assets.zone_ids`, and contract plus viewport suites pass.
+4. The generated Vite proxy used `/api`, which also intercepted the local `api.ts` module and rendered a blank development page. The browser test exposed the 404; the proxy now matches only `/api/`, and the full accessibility/reconnect profile passes.
 
 Candidate review/interview preparation effort remains to be added by the candidate. AI/session timings are not substituted for that value.
