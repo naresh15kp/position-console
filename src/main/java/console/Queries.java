@@ -2,6 +2,7 @@ package console;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import org.springframework.jdbc.core.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,19 +13,27 @@ import java.util.*;
 @Service
 class Queries {
     private final JdbcTemplate db;
-    private final ObjectMapper json;
+    private final ObjectReader zoneIdsReader;
     private static final String ALERT = """
         select a.*,r.observed_at as trigger_observed_at from alerts a
         join reports r on r.report_id=a.trigger_report_id
         """;
     private static final String ASSET = """
-        select r.*,a.zone_ids from assets a join reports r on r.report_id=a.current_report_id
+        select r.*,a.asset_id,a.zone_ids
+        from assets a
+        join lateral (
+          -- Prevent flattening into a full-history hash join as reports grow.
+          select report_id,observed_at,observed_ns,lat,lon,source,kind,speed_kn,heading_deg
+          from reports
+          where report_id=a.current_report_id
+          offset 0
+        ) r on true
         """;
     private static final String SOURCE_TYPE = "coalesce(source_type,classify_source(source))";
 
     Queries(JdbcTemplate db, ObjectMapper json) {
         this.db = db;
-        this.json = json;
+        this.zoneIdsReader = json.readerForListOf(String.class);
     }
 
     boolean ready() { return Integer.valueOf(1).equals(db.queryForObject("select 1", Integer.class)); }
@@ -114,16 +123,16 @@ class Queries {
     }
 
     private Map<String, Object> assetRow(ResultSet rs, int row) throws SQLException {
-        var result = trackRow(rs, row);
-        result.putAll(fields("assetId", rs.getString("asset_id"), "kind", rs.getString("kind"),
+        return fields("reportId", rs.getString("report_id"), "observedAt", time(rs, "observed_at"),
+                "lat", rs.getDouble("lat"), "lon", rs.getDouble("lon"), "source", rs.getString("source"),
+                "assetId", rs.getString("asset_id"), "kind", rs.getString("kind"),
                 "speedKn", rs.getObject("speed_kn"), "headingDeg", rs.getObject("heading_deg"),
-                "zoneIds", zoneIds(rs.getString("zone_ids"))));
-        return result;
+                "zoneIds", zoneIds(rs.getString("zone_ids")));
     }
 
     private List<String> zoneIds(String value) throws SQLException {
         try {
-            return json.readerForListOf(String.class).readValue(value);
+            return zoneIdsReader.readValue(value);
         } catch (JsonProcessingException e) {
             throw new SQLException("Invalid stored zone membership", e);
         }
