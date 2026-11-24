@@ -14,7 +14,8 @@ for image in \
 do
   test "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
 done
-cp compose.yaml deployment.env.example version-*.env INSTALL.md bundle/
+cp compose.yaml deployment.env.example users.example.json version-*.env \
+  README.md INSTALL.md openapi.yaml bundle/
 cp docs/RUNBOOK.md docs/CR-1.md docs/VERIFICATION.md bundle/docs/
 cp -r upgrade bundle/
 docker save \

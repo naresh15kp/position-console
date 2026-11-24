@@ -6,7 +6,7 @@ Results are recorded only after the named command completed. Credentials were re
 
 - Microsoft Windows 11 Home 10.0.26300
 - Intel Core i7-8550U, 4 cores/8 logical processors, 11.9 GiB RAM
-- OpenJDK 21.0.2, Maven 3.6.3, PostgreSQL 16.8, Python 3.11.9
+- OpenJDK 21.0.2, Maven 3.9.9, PostgreSQL 16.8, Python 3.11.9
 - Two native API processes on ports 18081/18082 sharing one isolated PostgreSQL cluster
 - Candidate feed: 225,748 nonblank lines; replay batch 250; four HTTP connections
 
@@ -37,6 +37,27 @@ Docker Desktop 29.9.3 supplied a Linux x86_64 engine with Compose 5.7.1 and WSL 
 
 The required target is at least 2,000 ingest lines/s and viewport p95 below 100 ms for up to 1,000 matching assets. The local baseline passes both under the target's unspecified viewport concurrency. The extra four-client stress number is retained rather than presented as a pass.
 
+## CR-1 and rolling-upgrade results
+
+| Check | Result |
+|---|---|
+| Clean v1.1.0 install | V2 completed with `reports.source_type` physically `NOT NULL`; baseline contract and source-type classification/filter checks passed |
+| Small rolling-upgrade traffic probe | 3,625 requests, 0 failures: 1,094 ingests and 2,531 reads |
+| Populated v1.0.0 preparation replay | Same 225,748-line feed and expected counts, 0 HTTP errors; 1,718 lines/s on the later Docker Desktop run |
+| Populated rolling-upgrade traffic probe | 2,433 requests, 0 failures: 1,041 ingests and 1,392 reads while A, then B and the web console were replaced |
+| Interrupted backfill | A 3-second statement timeout stopped after 75,000 committed rows; 141,082 rows remained null and the checkpoint was preserved |
+| Resumed backfill | Completed in 6.84 seconds; 216,082 legacy rows processed, including writes made before V2 committed |
+| Verification/finalization | 0 null and 0 misclassified rows; check validated; physical `NOT NULL` set; old-writer trigger enabled |
+| Binary rollback | A v1.0.0 API was recreated and became healthy against the finalized v1.1.0 schema, then was rolled forward again |
+| Post-upgrade contracts | Baseline two-replica scenario, source-type behavior, fixed negative paths, Maven tests and packaged V1/V2 migration check passed |
+| Post-upgrade browser | No external requests or Axe A/AA violations; visible keyboard focus; recovered after a 30-second outage; 179 ms maximum long task |
+| Post-upgrade viewport | 1,000 assets/response; v1.1.0 p95 102.74 ms and rolled-back v1.0.0 p95 108.54 ms on Windows Docker Desktop |
+| Combined offline archive | Approximately 249 MiB; checksum verified; required docs/templates present; no credentials, brief or candidate-pack paths |
+| Archive-only clean installs | Deleted all six runtime image tags, loaded only the embedded archive, then passed clean v1.1.0 physical `NOT NULL`/contract checks and clean v1.0.0 contract checks |
+| Archive-only rolling upgrade | Populated v1.0.0 rolled to v1.1.0 under 2,199 requests with 0 failures; 113 legacy rows backfilled; verification/finalization and source-type checks passed |
+
+The later Docker replay and viewport samples miss the brief's performance targets and are not represented as passes. The same baseline code previously reached 9,544 lines/s and 56.42 ms p95 in the native local topology. On the populated Docker database, PostgreSQL began flattening the viewport join into a full-history hash join: direct execution was 64.69 ms. The query now preserves indexed current-report lookups and directly executes in 18.18 ms, but end-to-end Docker p95 remained 102.74 ms. The matching v1.0.0 rollback result of 108.54 ms indicates CR-1 is not the source of that residual overhead. Investigate container CPU scheduling, cgroup throttling, JSON serialization and Docker Desktop I/O with server-side request timing on the required physical Linux host.
+
 ## Reproduction
 
 1. Run `mvn clean package`; inspect the baseline JAR and verify that it contains only `V1__base.sql`.
@@ -50,5 +71,4 @@ The required target is at least 2,000 ingest lines/s and viewport p95 below 100 
 ## Pending evidence before public submission
 
 - Perform a manual screen-reader announcement check; automated Axe, keyboard focus and runtime-host checks pass.
-- Rehearse the populated, traffic-bearing v1.0.0 → v1.1.0 rolling upgrade with zero failed requests.
-- Repeat the final combined v1.0.0/v1.1.0 release archive rehearsal on an independent Linux x86_64 host with external networking disabled.
+- Repeat the final combined v1.0.0/v1.1.0 release archive rehearsal on an independent physical Linux x86_64 host with external networking disabled; the local archive-only rehearsal used Docker Desktop's Linux amd64 engine.

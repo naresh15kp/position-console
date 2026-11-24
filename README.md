@@ -55,9 +55,9 @@ Mirror approved checksum-verified base images, Maven artifacts and npm packages 
 
 ## Evidence, limitations and AI assistance
 
-Measured commands, environments and pending checks are in [docs/VERIFICATION.md](docs/VERIFICATION.md). Current Windows evidence exceeds the ingest and required single-client viewport targets; the four-client viewport stress result exceeds 100 ms and is reported separately. Isolated Linux archive rehearsal, 5x browser trace, 30-second outage capture and WCAG audit remain pending, so v1.0.0 is not yet tagged.
+Measured commands, environments and pending checks are in [docs/VERIFICATION.md](docs/VERIFICATION.md). The rebuilt and archive-rehearsed baseline is tagged `v1.0.0`. Its native Windows measurements exceed the ingest and required single-client viewport targets; the four-client stress result is reported separately. A later populated Docker Desktop upgrade rehearsal had zero request failures but measured 1,718 ingest lines/s and 102.74 ms viewport p95, so those runs are explicitly recorded as misses. Clean installs and a rolling upgrade passed after deleting all runtime images and loading only the combined archive. An independent physical Linux x86_64 rehearsal and manual screen-reader check remain pending.
 
-GitHub Copilot was used to read local inputs, implement code/tests and review results. Three concrete corrections to generated output are already evidenced:
+GitHub Copilot was used to read local inputs, implement code/tests and review results. Concrete corrections to generated output include:
 
 1. A redundant composite report unique key caused `ON CONFLICT (report_id)` to leak two 500s during replay. PostgreSQL logs identified the second conflict arbiter; it was replaced by a deferred ownership trigger, then replayed with zero HTTP errors.
 2. A non-clean Maven build retained the later V2 migration in the v1.0.0 JAR. Flyway startup logs exposed schema version 2; verification now uses `mvn clean package` and checks baseline JAR migration entries.
@@ -66,5 +66,6 @@ GitHub Copilot was used to read local inputs, implement code/tests and review re
 5. The generated Compose hardening omitted the API health check while edge required `service_healthy`, so startup refused to proceed. The archive rehearsal exposed it; the health check was restored to the API anchor and the complete topology reaches healthy.
 6. HAProxy rejected the generated config because it lacked a final newline. Container logs identified the exact parse error; the file was corrected and the rebuilt non-root/read-only edge passes health and drain tests.
 7. The Windows working tree converted the generated bundle script to CRLF despite its Linux target. Running it in a Linux CLI container exposed `set: illegal option`; release scripts were normalized and the actual archive then built successfully.
+8. After CR-1 backfill, PostgreSQL flattened the viewport join into a parallel scan of all report history. `EXPLAIN ANALYZE` identified the plan; a lateral current-report lookup now keeps database work bounded to matching assets (64.69 ms down to 18.18 ms in the populated database), while the remaining end-to-end Docker target miss stays documented.
 
 Candidate review/interview preparation effort remains to be added by the candidate. AI/session timings are not substituted for that value.

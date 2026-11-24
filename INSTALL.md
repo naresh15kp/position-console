@@ -2,7 +2,7 @@
 
 The target is Linux x86_64 with Docker Engine and Compose. It needs no registry access, Java, Node, Python, Maven or image build. The API and console share <http://localhost:8080>.
 
-After extraction, create `.env` beside `compose.yaml` with `DB_PASSWORD` and a shared random `TOKEN_SECRET` of at least 32 bytes. Put the deploy-time accounts array at `users.json`, readable by UID 10001. Keep both files outside source control and support bundles.
+After extraction, copy `deployment.env.example` to `.env` and set `DB_PASSWORD` plus a shared random `TOKEN_SECRET` of at least 32 bytes. Copy `users.example.json` to `users.json`, replace every placeholder account/password, and make it readable by UID 10001. Keep `.env` and `users.json` outside source control and support bundles.
 
 ## Start v1.1.0 on an empty database
 

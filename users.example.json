@@ -1,0 +1,22 @@
+[
+  {
+    "username": "replace-ingest",
+    "password": "replace-with-a-secret",
+    "role": "INGEST"
+  },
+  {
+    "username": "replace-operator-a",
+    "password": "replace-with-a-secret",
+    "role": "OPERATOR"
+  },
+  {
+    "username": "replace-operator-b",
+    "password": "replace-with-a-secret",
+    "role": "OPERATOR"
+  },
+  {
+    "username": "replace-supervisor",
+    "password": "replace-with-a-secret",
+    "role": "SUPERVISOR"
+  }
+]
