@@ -1,6 +1,6 @@
 # Position Console
 
-A Java 21/Spring Boot position-ingest API, PostgreSQL 16.8 store and offline React/TypeScript operator console. Two stateless API replicas share PostgreSQL behind HAProxy. See [INSTALL.md](INSTALL.md), the [runbook](docs/RUNBOOK.md) and [verification evidence](docs/VERIFICATION.md).
+A Java 21/Spring Boot position-ingest API, PostgreSQL 16.8 store and offline React/TypeScript operator console. Two stateless API replicas share PostgreSQL behind HAProxy. See the technical design in [Markdown](docs/TECHNICAL-DESIGN.md) or [Microsoft Word](docs/Position-Console-Technical-Design.docx), [INSTALL.md](INSTALL.md), the [runbook](docs/RUNBOOK.md) and [verification evidence](docs/VERIFICATION.md).
 
 ## Build and run
 
